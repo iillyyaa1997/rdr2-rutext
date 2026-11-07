@@ -1,5 +1,5 @@
 // RuText.asi - shows hard-coded English text of RDR2 ScriptHook mods in another language
-// (Russian dictionaries are what it was made for) and remembers Bandit Hideouts hideouts.
+// (Russian dictionaries are what it was made for).
 //
 // Mods built against ScriptHookRDR2 call natives through three exports of
 // ScriptHookRDR2.dll: nativeInit(hash), nativePush64(arg) for every argument and
@@ -18,13 +18,7 @@
 //   # comment; \n and \t escapes work on both sides
 // Untranslated strings that reach the screen are written to
 // <game>\RuText\untranslated\<module>.txt when Capture=1 in RuText.ini.
-//
-// Hideout memory (section [HideoutMemory] in RuText.ini): Bandit Hideouts with
-// ALWAYS_SHOW_HIDEOUT_BLIP=1 puts a skull on the map for every hideout. RuText watches
-// the blips that module creates, hides the skulls of hideouts the player has not been
-// near yet (BLIP_MODIFIER_HIDDEN) and shows a skull for good once the player comes
-// within Radius metres. Visited hideouts are kept in <game>\RuText\HideoutMemory.dat.
-// Bandit Hideouts still removes the skull of a cleared hideout until it respawns.
+
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -49,17 +43,6 @@ namespace {
 constexpr uint64_t kCreateVarString = 0xFA925AC00EB830B9ULL;
 constexpr uint64_t kDatabindingAddDataString = 0x617FCA1C5652BBADULL;
 
-// hideout memory
-constexpr uint64_t kBlipAddForCoords = 0x554D9D53F696D002ULL;
-constexpr uint64_t kBlipAddForRadius = 0x45F13B7E0A15C880ULL;  // what Bandit Hideouts uses
-constexpr uint64_t kSetBlipSprite = 0x74F74D3207ED525CULL;
-constexpr uint64_t kDoesBlipExist = 0xCD82FA174080B3B1ULL;
-constexpr uint64_t kBlipAddModifier = 0x662D364ABF16DE2FULL;
-constexpr uint64_t kBlipRemoveModifier = 0xB059D7BD3D78C16FULL;
-constexpr uint64_t kPlayerPedId = 0x096275889B8E0EE0ULL;
-constexpr uint64_t kGetEntityCoords = 0xA86D5F069399F44DULL;
-constexpr uint32_t kModifierHidden = 0xB946AEF0;   // BLIP_MODIFIER_HIDDEN
-constexpr uint32_t kSpriteHideout = 0x5846C31D;    // blip_ambient_bounty_target (HIDEOUT_ICON=1)
 
 constexpr const char* kExpInit = "?nativeInit@@YAX_K@Z";
 constexpr const char* kExpPush = "?nativePush64@@YAX_K@Z";
@@ -563,152 +546,6 @@ bool ReadableCString(const void* p) {
   return false;
 }
 
-// ---------------------------------------------------------------- hideout memory
-
-bool g_hmEnabled = true;
-float g_hmRadius = 150.0f;
-std::string g_hmModule = "bandit_hideouts";
-
-struct HmBlip {
-  int blip;
-  float x, y, z;
-  bool skull;
-  bool shown;
-};
-std::vector<HmBlip> g_hmBlips;                  // touched only on the game thread (script fibers)
-std::vector<std::array<float, 3>> g_hmVisited;  // hideouts the player has been near
-int g_hmLogged = 0;
-bool g_hmDiag = false;
-std::unordered_set<uint64_t> g_hmSeen;
-
-float ArgFloat(uint64_t v) {
-  float f;
-  uint32_t lo = (uint32_t)v;
-  memcpy(&f, &lo, 4);
-  return f;
-}
-
-void HmTrack(int blip, float x, float y, float z, uint32_t hash) {
-  if (!blip) return;
-  if (g_hmLogged < 40) {
-    ++g_hmLogged;
-    Log("hideout memory: blip %d at %.1f %.1f %.1f, hash 0x%08X", blip, x, y, z, hash);
-  }
-  for (auto& b : g_hmBlips)
-    if (b.blip == blip) {
-      b = HmBlip{blip, x, y, z, hash == kSpriteHideout, false};
-      return;
-    }
-  g_hmBlips.push_back(HmBlip{blip, x, y, z, hash == kSpriteHideout, false});
-}
-
-void HmSprite(int blip, uint32_t sprite) {
-  for (auto& b : g_hmBlips)
-    if (b.blip == blip) {
-      if (g_hmLogged < 40) {
-        ++g_hmLogged;
-        Log("hideout memory: blip %d sprite 0x%08X", blip, sprite);
-      }
-      if (sprite == kSpriteHideout) b.skull = true;
-      b.shown = false;  // a new sprite may reset modifiers: settle on the next tick
-      return;
-    }
-}
-
-std::wstring HmFile() { return g_dir + L"\\HideoutMemory.dat"; }
-
-void HmLoad() {
-  g_hmVisited.clear();
-  FILE* f = _wfopen(HmFile().c_str(), L"r");
-  if (!f) return;
-  float x, y, z;
-  while (fscanf(f, "%f %f %f", &x, &y, &z) == 3) g_hmVisited.push_back({x, y, z});
-  fclose(f);
-}
-
-void HmSave() {
-  std::wstring tmp = HmFile() + L".tmp";
-  FILE* f = _wfopen(tmp.c_str(), L"w");
-  if (!f) return;
-  for (auto& v : g_hmVisited) fprintf(f, "%.1f %.1f %.1f\n", v[0], v[1], v[2]);
-  fclose(f);
-  MoveFileExW(tmp.c_str(), HmFile().c_str(), MOVEFILE_REPLACE_EXISTING);
-}
-
-bool HmVisited(const HmBlip& b) {
-  for (auto& v : g_hmVisited) {
-    float dx = v[0] - b.x, dy = v[1] - b.y;
-    if (dx * dx + dy * dy < 25.0f) return true;  // same hideout: within 5 m
-  }
-  return false;
-}
-
-template <typename R = uint64_t, typename... A>
-R Native(uint64_t hash, A... args) {
-  g_origInit(hash);
-  (g_origPush([](auto v) {
-     uint64_t r = 0;
-     memcpy(&r, &v, sizeof(v));
-     return r;
-   }(args)),
-   ...);
-  uint64_t* res = g_origCall();
-  R out{};
-  memcpy(&out, res, sizeof(R));
-  return out;
-}
-
-void HmTick() {
-  if (!g_hmEnabled || g_hmBlips.empty()) return;
-  int ped = Native<int>(kPlayerPedId);
-  g_origInit(kGetEntityCoords);
-  g_origPush((uint64_t)(uint32_t)ped);
-  g_origPush(1);
-  g_origPush(1);
-  float v[6];
-  memcpy(v, g_origCall(), sizeof v);  // x, pad, y, pad, z, pad
-  float px = v[0], py = v[2];
-  bool saved = false;
-  int skulls = 0, hidden = 0;
-  for (size_t i = 0; i < g_hmBlips.size();) {
-    HmBlip& b = g_hmBlips[i];
-    if (!Native<int>(kDoesBlipExist, b.blip)) {
-      g_hmBlips.erase(g_hmBlips.begin() + i);
-      continue;
-    }
-    ++i;
-    if (!b.skull) continue;
-    ++skulls;
-    bool visited = HmVisited(b);
-    float dx = px - b.x, dy = py - b.y;
-    if (!visited && dx * dx + dy * dy < g_hmRadius * g_hmRadius) {
-      g_hmVisited.push_back({b.x, b.y, b.z});
-      saved = true;
-      visited = true;
-      Log("hideout memory: visited the hideout at %.1f %.1f %.1f", b.x, b.y, b.z);
-    }
-    if (visited) {
-      if (!b.shown) {
-        Native<int>(kBlipRemoveModifier, b.blip, kModifierHidden);
-        b.shown = true;
-      }
-    } else {
-      // re-applied every tick: Bandit Hideouts may restyle its blip and drop modifiers
-      Native<int>(kBlipRemoveModifier, b.blip, kModifierHidden);
-      Native<int>(kBlipAddModifier, b.blip, kModifierHidden);
-      b.shown = false;
-      ++hidden;
-    }
-  }
-  if (saved) HmSave();
-  static int lastSkulls = -1, lastHidden = -1;
-  if (skulls != lastSkulls || hidden != lastHidden) {
-    Log("hideout memory: %d hideout skulls, %d hidden, %d visited in total", skulls, hidden, (int)g_hmVisited.size());
-    lastSkulls = skulls;
-    lastHidden = hidden;
-  }
-}
-
 // ---------------------------------------------------------------- hooks
 
 struct CallState {
@@ -717,8 +554,6 @@ struct CallState {
   bool literal = false;
   bool active = false;
   ModInfo* mod = nullptr;
-  int blip = 0;  // 1 = BLIP_ADD_FOR_COORDS / _RADIUS, 2 = SET_BLIP_SPRITE from the hideout module
-  uint64_t args[4] = {};
 };
 thread_local CallState t_call;
 
@@ -727,17 +562,7 @@ void HookInit(uint64_t hash) {
   t_call.index = 0;
   t_call.literal = false;
   t_call.active = (hash == kCreateVarString || hash == kDatabindingAddDataString);
-  t_call.blip = g_hmEnabled ? ((hash == kBlipAddForCoords || hash == kBlipAddForRadius) ? 1
-                                : hash == kSetBlipSprite                               ? 2
-                                                                                       : 0)
-                            : 0;
-  t_call.mod = (t_call.active || t_call.blip) ? FindMod((uintptr_t)__builtin_return_address(0)) : nullptr;
-  if (t_call.blip && (!t_call.mod || t_call.mod->name != g_hmModule)) t_call.blip = 0;
-  if (g_hmDiag) {
-    ModInfo* m = FindMod((uintptr_t)__builtin_return_address(0));
-    if (m && m->name == g_hmModule && g_hmSeen.size() < 600 && g_hmSeen.insert(hash).second)
-      Log("diag: %s calls 0x%016llX", m->name.c_str(), (unsigned long long)hash);
-  }
+  t_call.mod = t_call.active ? FindMod((uintptr_t)__builtin_return_address(0)) : nullptr;
   g_origInit(hash);
 }
 
@@ -755,24 +580,13 @@ void HookPush(uint64_t value) {
       if (ReadableCString((const void*)value)) value = (uint64_t)Translate(t_call.mod, (const char*)value);
     }
   }
-  if (t_call.blip && t_call.index < 4) t_call.args[t_call.index] = value;
   ++t_call.index;
   g_origPush(value);
 }
 
 uint64_t* HookCall() {
   t_call.active = false;
-  uint64_t* r = g_origCall();
-  if (t_call.blip == 1 && r) {
-    int blip = 0;
-    memcpy(&blip, r, sizeof blip);
-    HmTrack(blip, ArgFloat(t_call.args[1]), ArgFloat(t_call.args[2]), ArgFloat(t_call.args[3]),
-            (uint32_t)t_call.args[0]);
-  } else if (t_call.blip == 2) {
-    HmSprite((int)(uint32_t)t_call.args[0], (uint32_t)t_call.args[1]);
-  }
-  t_call.blip = 0;
-  return r;
+  return g_origCall();
 }
 
 // ---------------------------------------------------------------- import patching
@@ -899,7 +713,6 @@ void ScriptMain() {
       sig = now;
       ReloadDictionaries();
     }
-    HmTick();
     g_scriptWait(2000);
   }
 }
@@ -908,9 +721,6 @@ void ReadIni() {
   std::wstring ini = g_dir + L"\\RuText.ini";
   g_enabled = GetPrivateProfileIntW(L"RuText", L"Enabled", 1, ini.c_str()) != 0;
   g_capture = GetPrivateProfileIntW(L"RuText", L"Capture", 1, ini.c_str()) != 0;
-  g_hmEnabled = GetPrivateProfileIntW(L"HideoutMemory", L"Enabled", 1, ini.c_str()) != 0;
-  g_hmRadius = (float)GetPrivateProfileIntW(L"HideoutMemory", L"Radius", 150, ini.c_str());
-  g_hmDiag = GetPrivateProfileIntW(L"HideoutMemory", L"Diag", 0, ini.c_str()) != 0;
 }
 
 bool Register() {
@@ -928,9 +738,9 @@ bool Register() {
   return true;
 }
 
-// Patch the mods that are already loaded right away, long before any script runs:
-// some create their map blips in their very first tick (Bandit Hideouts), before
-// RuText's own script gets its first turn. Later modules are picked up by ScriptMain.
+// Patch the mods that are already loaded right away, long before any script runs, so
+// text a mod shows in its very first tick is caught too. Later modules are picked up
+// by ScriptMain. Plugins that chain behind RuText (HideoutMemory) patch after this.
 DWORD WINAPI EarlyPatch(LPVOID) {
   PatchAll();
   Log("early patch done (%d modules)", (int)g_modCount.load());
@@ -960,12 +770,9 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
   g_dir = p.substr(0, p.find_last_of(L"\\/")) + L"\\RuText";
   CreateDirectoryW(g_dir.c_str(), nullptr);
   g_log = _wfopen((g_dir + L"\\RuText.log").c_str(), L"w");
-  Log("RuText 1.4.0 loaded");
+  Log("RuText 1.5.0 loaded");
   ReadIni();
   Log("Enabled=%d Capture=%d", g_enabled, g_capture);
-  HmLoad();
-  Log("hideout memory: Enabled=%d Radius=%.0f, %d hideouts visited before", g_hmEnabled, g_hmRadius,
-      (int)g_hmVisited.size());
   LoadDictionaries();
   auto c = g_dict->find("_common");
   g_common = c == g_dict->end() ? nullptr : &c->second;
