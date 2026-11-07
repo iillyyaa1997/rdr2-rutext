@@ -1,5 +1,9 @@
 # RuText for Red Dead Redemption 2
 
+> **Superseded by [Telegraph — Mod Auto Translator](https://github.com/iillyyaa1997/rdr2-telegraph).** Telegraph does everything RuText does, reads RuText dictionaries as they are, and translates the rest automatically (Google without a key, or DeepL / DeepSeek / an OpenAI-compatible model with your key). RuText stays here for those who want dictionaries only.
+>
+> **Заменён на [Telegraph](https://github.com/iillyyaa1997/rdr2-telegraph):** то же самое плюс автоматический перевод того, чего нет в словарях. Словари RuText подходят без изменений.
+
 Shows the hard-coded English text of ScriptHook mods in your language. Many mods have menus, prompts and messages compiled into the `.asi`. RuText swaps that text for a translation from plain-text dictionaries at the moment the mod sends it to the game. The mod files stay untouched.
 
 Download: [Nexus Mods](https://www.nexusmods.com/reddeadredemption2/mods/11518) or [Releases](https://github.com/iillyyaa1997/rdr2-rutext/releases).
