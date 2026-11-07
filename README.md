@@ -4,7 +4,7 @@ Small ASI plugins for RDR2 Story Mode (game 1.0.1491.50, ScriptHookRDR2 V2). Eac
 
 | Mod | What it does |
 |---|---|
-| [RuText](rutext/) | Translates the hard-coded English text of ScriptHook mods from plain-text dictionaries; hideout memory for Bandit Hideouts |
+| [RuText](rutext/) · [Nexus](https://www.nexusmods.com/reddeadredemption2/mods/11518) | Translates the hard-coded English text of ScriptHook mods from plain-text dictionaries; hideout memory for Bandit Hideouts |
 
 ## Build
 

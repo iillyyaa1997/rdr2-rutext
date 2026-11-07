@@ -1,6 +1,6 @@
 # RuText for Red Dead Redemption 2
 
-An ASI plugin for RDR2 Story Mode with two jobs:
+An ASI plugin for RDR2 Story Mode with two jobs. Download: [Nexus Mods](https://www.nexusmods.com/reddeadredemption2/mods/11518) or [Releases](https://github.com/iillyyaa1997/rdr2-mods/releases).
 
 1. **Translate the hard-coded text of ScriptHook mods.** Many mods have menus, prompts and messages in English that are compiled into the `.asi`. RuText swaps that text for a translation from plain-text dictionaries at the moment the mod sends it to the game. The mod files stay untouched.
 2. **Hideout memory for [Bandit Hideouts](https://www.nexusmods.com/reddeadredemption2/mods/2213).** Hideout skulls stay off the map until you have been near the hideout, then they stay on the map for good, the way the map fills in as you explore. A cleared hideout still disappears until it respawns, as Bandit Hideouts does it.
