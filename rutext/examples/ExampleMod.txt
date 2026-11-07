@@ -1,0 +1,12 @@
+# Dictionary for ExampleMod.asi. Put it into <game>\RuText\ as ExampleMod.txt (the part before the
+# first dot selects the module; _common.txt applies to every module). UTF-8.
+# Changes are picked up while the game runs.
+
+# exact line
+Open Menu => Открыть меню
+# pattern: each * captures text and is put back in the same order
+You paid $*. They rode off. => Ты заплатил $*. Они ускакали.
+# ~ replaces the text inside any longer line
+~Valentine => Валентайн
+# \n and \t work on both sides
+First line\nSecond line => Первая строка\nВторая строка
